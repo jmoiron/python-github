@@ -72,12 +72,14 @@ class Github(object):
         now = time.time()
         a_minute_ago = now - 60
         self.throttle_list = [t for t in self.throttle_list if t > a_minute_ago]
+        if len(self.throttle_list) < 60:
+            self.throttle_list.append(now)
+            return
         oldest = self.throttle_list[0]
         if len(self.throttle_list) >= 60:
             time.sleep((oldest + 60) - now)
-        self.throttle_list.append(oldest+60)
 
-    def build_request(self, url):
+    def build_request(self, url, data=None):
         if not self.is_authenticated:
             return Request(url)
         if self.password:
@@ -85,7 +87,7 @@ class Github(object):
         else:
             auth = '%s/token:%s' % (self.username, self.token)
         auth = {'Authorization': 'Basic %s' % (auth.encode('base64').strip())}
-        return Request(url, None, auth)
+        return Request(url, data, auth)
 
     def load_url(self, url, quiet=False):
         self.wait()
@@ -98,6 +100,20 @@ class Github(object):
                 traceback.print_exc()
                 print "url was: %s" % url
             result = "[]"
+        return result
+
+    def post_url(self, url, data={}, quiet=False):
+        data = dict(data)
+        self.wait()
+        request = self.build_request(url, urlencode(data))
+        try:
+            result = urlopen(request).read()
+        except:
+            if not quiet:
+                import traceback
+                traceback.print_exc()
+                print "url was: %s" % url
+            result = False
         return result
 
     def user(self, username):
@@ -144,16 +160,64 @@ class User(object):
             url += '?%s' % query
         return json.loads(self.gh.load_url(url))['repositories']
 
-    def events(self, start=None, limit=None):
-        query = smart_encode(start=start, limit=limit)
-        url = api_base + 'users/%s/events/' % self.username
-        if query:
-            url += '?%s' % query
+    def watched_repositories(self):
+        """Show repositories a user is following.  I am not sure if this is
+        paged or not."""
+        url = api_base + 'repos/watched/%s' % self.username
+        return json.loads(self.gh.load_url(url))['repositories']
+
+    @requires_authentication
+    def follow(self, username):
+        """Follow user with currently authenticated user."""
+        url = api_base + 'user/follow/%s' % username
+        return bool(self.gh.post_url(url))
+
+    @requires_authentication
+    def unfollow(self, username):
+        """Unfollow a user with currently authenticated user."""
+        url = api_base + 'user/unfollow/%s' % username
+        return bool(self.gh.post_url(url))
+
+    def following(self):
+        url = api_base + 'user/show/%s/following' % self.username
         return json.loads(self.gh.load_url(url))
 
-    def get(self):
-        url = api_base + 'users/%s/' % self.username
+    def followers(self):
+        url = api_base + 'user/show/%s/followers' % self.username
         return json.loads(self.gh.load_url(url))
+
+    @requires_authentication
+    def emails(self):
+        url = api_base + 'user/emails'
+        return json.loads(self.gh.load_url(url))
+
+    # XXX: the API docs aren't finished for these two
+    @requires_authentication
+    def add_email(self):
+        raise NotImplementedError
+
+    @requires_authentication
+    def remove_email(self):
+        raise NotImplementedError
+
+    @requires_authentication
+    def keys(self):
+        url = api_base + 'user/keys'
+        return json.loads(self.gh.load_url(url))
+
+    @requires_authentication
+    def add_key(self, title, key):
+        url = api_base + 'user/key/add'
+        return self.gh.post_url(url, dict(title=title, key=key))
+
+    @requires_authentication
+    def remove_key(self, id):
+        url = api_base + 'user/key/remove'
+        return self.gh.post_url(url, dict(id=id))
+
+    def get(self):
+        url = api_base + 'user/show/%s' % self.username
+        return json.loads(self.gh.load_url(url)).get('user', {})
 
     def __repr__(self):
         return '<User: %s>' % self.username

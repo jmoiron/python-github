@@ -19,6 +19,7 @@ except ImportError:
 __all__ = ['AccessRestricted', 'AuthenticationRequired', 'to_datetime', 'Github']
 
 api_base = 'https://github.com/api/v2/json/'
+gist_base = 'https://gist.github.com/api/v1/json/'
 
 github_timezone = '-0700'
 github_date_format = '%Y/%m/%d %H:%M:%S'
@@ -122,7 +123,7 @@ class Github(object):
         auth = {'Authorization': 'Basic %s' % (auth.encode('base64').strip())}
         return Request(url, data, auth)
 
-    def load_url(self, url, quiet=True):
+    def load_url(self, url, quiet=False):
         self.wait()
         request = self.build_request(url)
         try:
@@ -154,6 +155,9 @@ class Github(object):
 
     def repository(self, username, name):
         return Repository(self, username, name)
+
+    def gist(self, id):
+        return Gist(self, id)
 
     @requires_authentication
     def organizations(self):
@@ -239,6 +243,21 @@ class User(object):
         url = api_base + 'user/key/remove'
         return self.gh.post_url(url, dict(id=id))
 
+    def gists(self, private=False):
+        if private:
+            raise NotImplementedError #XXX: no API docs yet
+        url = gist_base + 'gists/%s' % self.username
+        return json.loads(self.gh.load_url(url))
+
+    def gist(self, id):
+        # XXX: Gists don't actually "belong" to a user under the GIST API,
+        # but it makes sense to be able to fetch them from the user as well
+        return Gist(self.gh, id)
+
+    @authenticated_user_only
+    def create_gist(self, *args, **kwargs):
+        raise NotImplementedError
+
     def get(self):
         url = api_base + 'user/show/%s' % self.username
         return json.loads(self.gh.load_url(url)).get('user', {})
@@ -284,24 +303,44 @@ class Repository(object):
         return json.loads(self.gh.load_url(url)).get('branches', [])
 
     def issue(self, number):
-        return Issue(self.gh, self.username, self.slug, number)
-
-    def issues(self, start=None, limit=None):
-        url = self.base_url + 'issues/'
-        query = smart_encode(start=start, limit=limit)
-        if query: url += '?%s' % query
-        return json.loads(self.gh.load_url(url))
-
-    def events(self):
-        url = self.base_url + 'events/'
-        return json.loads(self.gh.load_url(url))
+        return Issue(self.gh, self.username, self.name, number)
 
     def followers(self):
         url = self.base_url + 'followers/'
         return json.loads(self.gh.load_url(url))
 
     def __repr__(self):
-        return '<Repository: %s\'s %s>' % (self.username, self.slug)
+        return '<Repository: %s\'s %s>' % (self.username, self.name)
+
+class Gist(object):
+    def __init__(self, gh, id):
+        self.gh = gh
+        self.id = id
+
+    def get(self):
+        url = gist_base + '%s' % self.id
+        return json.loads(self.gh.load_url(url))['gists']
+
+    def get_file(self, filename):
+        """Get a raw file from a gist.  Note that this is not in json, but
+        in whatever format the file in the gist is in."""
+        url = 'http://gist.github.com/raw/%s/%s' % (self.id, filename)
+        return self.gh.load_url(url)
+
+    @requires_authentication
+    def fork(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @requires_authentication
+    def delete(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @requires_authentication
+    def edit(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def __repr__(self):
+        return '<Gist %s>' % (self.id)
 
 class Issue(object):
     def __init__(self, gh, username, repos, number):

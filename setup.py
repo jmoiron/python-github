@@ -22,6 +22,8 @@ setup(
     # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
     classifiers=[
         'Development Status :: 1 - Planning',
+        'License :: OSI Approved :: MIT License',
+        'Intended Audience :: Developers',
     ],
     keywords='github python api',
     author='Jason Moiron',

@@ -93,10 +93,13 @@ class Github(object):
         self.username = username
         self.password = password
         self.token = token
-        self.is_authenticated = self.username and any([self.password, self.token])
         self.throttle = throttle
         self.throttle_list = []
         # extended API support
+
+    def _is_authenticated(self):
+        return self.username and any([self.password, self.token])
+    is_authenticated = property(_is_authenticated)
 
     def wait(self):
         """Handle request throttling.  Keeps a list of request timestamps and
@@ -166,7 +169,7 @@ class Github(object):
 
     def __repr__(self):
         extra = ''
-        if all((self.username, self.password)):
+        if self.is_authenticated:
             extra = ' (auth: %s)' % self.username
         return '<Github API%s>' % extra
 

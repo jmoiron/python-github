@@ -16,7 +16,7 @@ try:
 except ImportError:
     import simplejson as json
 
-__all__ = ['AuthenticationRequired', 'to_datetime', 'Github']
+__all__ = ['AccessRestricted', 'AuthenticationRequired', 'to_datetime', 'Github']
 
 api_base = 'https://github.com/api/v2/json/'
 
@@ -27,6 +27,17 @@ commit_date_format = '%Y-%m-%dT%H:%M:%S'
 class AuthenticationRequired(Exception):
     pass
 
+class AccessRestricted(Exception):
+    pass
+
+def authenticated_user_only(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if self.gh.username != self.username:
+            raise AccessRestricted("%s is only callable for the authenticated user" % method.__name__)
+        return method(self, *args, **kwargs)
+    return requires_authentication(wrapper)
+
 def requires_authentication(method):
     @wraps(method)
     def wrapper(self, *args, **kwargs):
@@ -34,6 +45,28 @@ def requires_authentication(method):
         if not is_authenticated:
             raise AuthenticationRequired("%s requires authentication" % method.__name__)
         return method(self, *args, **kwargs)
+    return wrapper
+
+def handle_pagination_all(method):
+    """Handles the "all" keyword argument, looping over the method page by
+    page until the page is empty and then returning a list of items."""
+    @wraps(method)
+    def wrapper(self, **kwargs):
+        kwargs = dict(kwargs)
+        all = kwargs.pop('all', None)
+        if all:
+            kwargs['page'] = 1
+            items = []
+            result = method(self, **kwargs)
+            while result:
+                items += result
+                kwargs['page'] += 1
+                try:
+                    result = method(self, **kwargs)
+                except:
+                    break
+            return items
+        return method(self, **kwargs)
     return wrapper
 
 def smart_encode(**kwargs):
@@ -89,7 +122,7 @@ class Github(object):
         auth = {'Authorization': 'Basic %s' % (auth.encode('base64').strip())}
         return Request(url, data, auth)
 
-    def load_url(self, url, quiet=False):
+    def load_url(self, url, quiet=True):
         self.wait()
         request = self.build_request(url)
         try:
@@ -142,18 +175,9 @@ class User(object):
     def repository(self, name):
         return Repository(self.gh, self.username, name)
 
+    @handle_pagination_all
     def repositories(self, page=None, all=False):
-        """Show a user's repositories.  If 'all' is True, load all of the
-        pages."""
-        if all:
-            repos = []
-            page = 1
-            result = self.repositories(page=page)
-            while result:
-                repos += result
-                page += 1
-                result = self.repositories(page=page)
-            return repos
+        """Show a user's repositories.  If 'all' is True, load all pages."""
         query = smart_encode(page=page)
         url = api_base + 'repos/show/%s' % self.username
         if query:
@@ -166,13 +190,13 @@ class User(object):
         url = api_base + 'repos/watched/%s' % self.username
         return json.loads(self.gh.load_url(url))['repositories']
 
-    @requires_authentication
+    @authenticated_user_only
     def follow(self, username):
         """Follow user with currently authenticated user."""
         url = api_base + 'user/follow/%s' % username
         return bool(self.gh.post_url(url))
 
-    @requires_authentication
+    @authenticated_user_only
     def unfollow(self, username):
         """Unfollow a user with currently authenticated user."""
         url = api_base + 'user/unfollow/%s' % username
@@ -186,31 +210,31 @@ class User(object):
         url = api_base + 'user/show/%s/followers' % self.username
         return json.loads(self.gh.load_url(url))
 
-    @requires_authentication
+    @authenticated_user_only
     def emails(self):
         url = api_base + 'user/emails'
         return json.loads(self.gh.load_url(url))
 
     # XXX: the API docs aren't finished for these two
-    @requires_authentication
+    @authenticated_user_only
     def add_email(self):
         raise NotImplementedError
 
-    @requires_authentication
+    @authenticated_user_only
     def remove_email(self):
         raise NotImplementedError
 
-    @requires_authentication
+    @authenticated_user_only
     def keys(self):
         url = api_base + 'user/keys'
         return json.loads(self.gh.load_url(url))
 
-    @requires_authentication
+    @authenticated_user_only
     def add_key(self, title, key):
         url = api_base + 'user/key/add'
         return self.gh.post_url(url, dict(title=title, key=key))
 
-    @requires_authentication
+    @authenticated_user_only
     def remove_key(self, id):
         url = api_base + 'user/key/remove'
         return self.gh.post_url(url, dict(id=id))
@@ -223,36 +247,41 @@ class User(object):
         return '<User: %s>' % self.username
 
 class Repository(object):
-    def __init__(self, gh, username, slug):
+    def __init__(self, gh, username, name):
         self.gh = gh
         self.username = username
-        self.slug = slug
-        self.base_url = api_base + 'repositories/%s/%s/' % (self.username, self.slug)
+        self.name = name
+        self.project = '%s/%s' % (username, name)
 
     def get(self):
-        return json.loads(self.gh.load_url(self.base_url))
-
-    def changeset(self, revision):
-        """Get one changeset from a repos."""
-        url = self.base_url + 'changesets/%s/' % (revision)
+        url = api_base + 'repos/show/%s/%s' % (self.username, self.name)
         return json.loads(self.gh.load_url(url))
 
-    def changesets(self, limit=None):
-        """Get information about changesets on a repository."""
-        url = self.base_url + 'changesets/'
-        query = smart_encode(limit=limit)
-        if query: url += '?%s' % query
-        return json.loads(self.gh.load_url(url, quiet=True))
+    @requires_authentication
+    def watch(self):
+        raise NotImplementedError
+
+    @handle_pagination_all
+    def commits(self, branch='master', page=None, all=False):
+        query = smart_encode(page=page)
+        url = api_base + 'commits/list/%s/%s/%s' % (self.username, self.name, branch)
+        if query:
+            url += '?%s' % query
+        return json.loads(self.gh.load_url(url)).get('commits', [])
+
+    def commit(self, sha):
+        url = api_base + 'commits/show/%s/%s/%s' % (self.username, self.name, sha)
+        return json.loads(self.gh.load_url(url)).get('commit', {})
 
     def tags(self):
         """Get a list of tags for a repository."""
-        url = self.base_url + 'tags/'
-        return json.loads(self.gh.load_url(url))
+        url = api_base + 'repos/show/%s/%s/tags' % (self.username, self.name)
+        return json.loads(self.gh.load_url(url)).get('tags', [])
 
     def branches(self):
         """Get a list of branches for a repository."""
-        url = self.base_url + 'branches/'
-        return json.loads(self.gh.load_url(url))
+        url = api_base + 'repos/show/%s/%s/branches' % (self.username, self.name)
+        return json.loads(self.gh.load_url(url)).get('branches', [])
 
     def issue(self, number):
         return Issue(self.gh, self.username, self.slug, number)
@@ -275,14 +304,14 @@ class Repository(object):
         return '<Repository: %s\'s %s>' % (self.username, self.slug)
 
 class Issue(object):
-    def __init__(self, gh, username, slug, number):
+    def __init__(self, gh, username, repos, number):
         self.gh = gh
         self.username = username
-        self.slug = slug
+        self.repos = repos
         self.number = number
-        self.base_url = api_base + 'repositories/%s/%s/issues/%s/' % (username, slug, number)
 
     def get(self):
+        url = api_base + 'issues/show/%s/%s/%s' % (self.username. self.repos, self.number)
         return json.loads(self.gh.load_url(self.base_url))
 
     def followers(self):

@@ -77,3 +77,25 @@ from _`github's developer API documents`.
 
 .. _github's developer API documents: http://develop.github.com/
 
+paging
+======
+
+Some parts of github's API limits the number of results returned on a request,
+and offers pagination to fetch older items.  The calls that support this,
+notably ``User.repositories`` and ``Repository.commits`` support both direct
+access to paging via a ``page`` kwarg as well as an ``all`` kwarg that fetches
+all pages.  Note that large repositories with thousands of commits could 
+require more requests than fit within the 1-minute request limit for the Github
+API, which means passing ``all=true`` can block for a substantial amount of 
+time.
+
+throttling
+==========
+
+Github's API has access limits throttled to 60 accesses per minute.  By default,
+``Github`` objects will obey these limits by waiting until 60 accesses have
+been made within a minute, and then waiting for the oldest access time + 60s to
+perform subsequent requests.  If you want to disable this (at the risk of
+getting access limit errors from the Github API), pass ``throttle=False`` to
+Github when instantiating a new handle.
+

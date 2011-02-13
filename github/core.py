@@ -66,7 +66,7 @@ def handle_pagination_all(method):
                     result = method(self, **kwargs)
                 except:
                     break
-            return items
+            return list(set(items))
         return method(self, **kwargs)
     return wrapper
 

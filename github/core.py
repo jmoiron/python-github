@@ -8,6 +8,7 @@ and python-github2 wrap all of the API results."""
 from urllib2 import Request, urlopen
 from urllib import urlencode
 from functools import wraps
+import re
 import datetime
 import time
 
@@ -66,7 +67,7 @@ def handle_pagination_all(method):
                     result = method(self, **kwargs)
                 except:
                     break
-            return list(set(items))
+            return items
         return method(self, **kwargs)
     return wrapper
 
@@ -83,8 +84,22 @@ def smart_encode(**kwargs):
 
 def to_datetime(timestring):
     """Convert one of the bitbucket API's timestamps to a datetime object."""
-    format = '%Y-%m-%d %H:%M:%S'
-    return datetime.datetime(*time.strptime(timestring, format)[:7])
+    import pytz
+    mountain = re.search('-07:?00', timestring)
+    stripped = re.sub('-0\d:?00', '', timestring).strip()
+    try:
+        dt = datetime.datetime(*time.strptime(stripped, github_date_format)[:6])
+    except ValueError:
+        try:
+            dt = datetime.datetime(*time.strptime(stripped, commit_date_format)[:6])
+        except ValueError:
+            raise Exception("Unrecognized timestamp format for string \"%s\"" % timestring)
+    if mountain:
+        timezone = pytz.timezone('US/Mountain')
+    else:
+        timezone = pytz.timezone('US/Pacific')
+    local = timezone.normalize(timezone.localize(dt))
+    return local.astimezone(pytz.utc)
 
 class Github(object):
     """Main github class.  Use an instantiated version of this class

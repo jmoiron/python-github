@@ -168,6 +168,12 @@ class Github(object):
             result = False
         return result
 
+    def user_search(self, term):
+        pass
+
+    def repository_search(self, term):
+        pass
+
     def user(self, username):
         return User(self, username)
 

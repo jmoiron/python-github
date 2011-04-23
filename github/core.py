@@ -149,7 +149,7 @@ class Github(object):
         except:
             if not quiet:
                 import traceback
-                traceback.print_exc()
+                print traceback.format_exc()
                 print "url was: %s" % url
             result = "[]"
         return result

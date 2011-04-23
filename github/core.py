@@ -151,7 +151,7 @@ class Github(object):
                 import traceback
                 print traceback.format_exc()
                 print "url was: %s" % url
-            result = "[]"
+            result = "{}"
         return result
 
     def post_url(self, url, data={}, quiet=False):

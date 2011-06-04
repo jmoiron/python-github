@@ -329,6 +329,12 @@ class Repository(object):
     def issue(self, number):
         return Issue(self.gh, self.username, self.name, number)
 
+    def issues(self, open=True):
+        """Get a list of open issues.  Pass open=False to get closed issues."""
+        url = api_base + "issues/list/%s/%s/%s" % (self.username, self.name,
+            'open' if open else 'closed')
+        return json.loads(self.gh.load_url(url)).get('issues', [])
+
     def followers(self):
         url = self.base_url + 'followers/'
         return json.loads(self.gh.load_url(url))

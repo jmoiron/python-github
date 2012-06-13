@@ -84,10 +84,10 @@ def smart_encode(**kwargs):
     return urlencode(args)
 
 def to_datetime(timestring):
-    """Convert one of the bitbucket API's timestamps to a datetime object."""
+    """Convert one of the github API's timestamps to a datetime object."""
     import pytz
     mountain = re.search('-07:?00', timestring)
-    stripped = re.sub('-0\d:?00', '', timestring).strip()
+    stripped = re.sub('-0\d:?00', '', timestring).strip().rstrip('Z')
     try:
         dt = datetime.datetime(*time.strptime(stripped, github_date_format)[:6])
     except ValueError:

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """Github wrapper which mimics my python-bitbucket wrapper, ironically
-originally intended to mimic py-github.  But I don't like the way py-github
+originally intended to mimic py-github.  But I don"t like the way py-github
 and python-github2 wrap all of the API results."""
 
 from urllib2 import Request, urlopen
@@ -17,14 +17,15 @@ try:
 except ImportError:
     import simplejson as json
 
-__all__ = ['AccessRestricted', 'AuthenticationRequired', 'to_datetime', 'Github']
+__all__ = ["AccessRestricted", "AuthenticationRequired", "to_datetime", "Github"]
 
-api_base = 'https://github.com/api/v2/json/'
-gist_base = 'https://gist.github.com/api/v1/json/'
+#api_base = "https://github.com/api/v2/json/"
+api_base = "https://api.github.com/"
+gist_base = "https://gist.github.com/api/v1/json/"
 
-github_timezone = '-0700'
-github_date_format = '%Y/%m/%d %H:%M:%S'
-commit_date_format = '%Y-%m-%dT%H:%M:%S'
+github_timezone = "-0700"
+github_date_format = "%Y/%m/%d %H:%M:%S"
+commit_date_format = "%Y-%m-%dT%H:%M:%S"
 
 class AuthenticationRequired(Exception):
     pass
@@ -55,9 +56,9 @@ def handle_pagination_all(method):
     @wraps(method)
     def wrapper(self, **kwargs):
         kwargs = dict(kwargs)
-        all = kwargs.pop('all', None)
+        all = kwargs.pop("all", None)
         if all:
-            kwargs['page'] = 1
+            kwargs["page"] = 1
             items = []
             result = method(self, **kwargs)
             while result:
@@ -104,16 +105,15 @@ def to_datetime(timestring):
 class Github(object):
     """Main github class.  Use an instantiated version of this class
     to make calls against the REST API."""
-    def __init__(self, username='', password='', token='', throttle=True):
+    def __init__(self, username='', token='', throttle=True):
         self.username = username
-        self.password = password
         self.token = token
         self.throttle = throttle
         self.throttle_list = []
         # extended API support
 
     def _is_authenticated(self):
-        return self.username and any([self.password, self.token])
+        return self.username and self.token
     is_authenticated = property(_is_authenticated)
 
     def wait(self):
@@ -134,11 +134,7 @@ class Github(object):
     def build_request(self, url, data=None):
         if not self.is_authenticated:
             return Request(url)
-        if self.password:
-            auth = '%s:%s' % (self.username, self.password)
-        else:
-            auth = '%s/token:%s' % (self.username, self.token)
-        auth = {'Authorization': 'Basic %s' % (auth.encode('base64').strip())}
+        auth = {'Authorization': 'token %s' % (self.token)}
         return Request(url, data, auth)
 
     def load_url(self, url, quiet=False):
@@ -174,8 +170,8 @@ class Github(object):
     def repository_search(self, term):
         pass
 
-    def user(self, username):
-        return User(self, username)
+    def user(self, username=None):
+        return User(self, username or self.username)
 
     def repository(self, username, name):
         return Repository(self, username, name)
@@ -207,16 +203,16 @@ class User(object):
     def repositories(self, page=None, all=False):
         """Show a user's repositories.  If 'all' is True, load all pages."""
         query = smart_encode(page=page)
-        url = api_base + 'repos/show/%s' % self.username
+        url = api_base + 'users/%s/repos' % self.username
         if query:
             url += '?%s' % query
-        return json.loads(self.gh.load_url(url))['repositories']
+        return json.loads(self.gh.load_url(url))
 
     def watched_repositories(self):
         """Show repositories a user is following.  I am not sure if this is
         paged or not."""
-        url = api_base + 'repos/watched/%s' % self.username
-        return json.loads(self.gh.load_url(url))['repositories']
+        url = api_base + 'users/%s/watched' % self.username
+        return json.loads(self.gh.load_url(url))
 
     @authenticated_user_only
     def follow(self, username):
@@ -307,14 +303,14 @@ class Repository(object):
     @handle_pagination_all
     def commits(self, branch='master', page=None, all=False):
         query = smart_encode(page=page)
-        url = api_base + 'commits/list/%s/%s/%s' % (self.username, self.name, branch)
+        url = api_base + 'repos/%s/%s/commits' % (self.username, self.name)
         if query:
             url += '?%s' % query
-        return json.loads(self.gh.load_url(url)).get('commits', [])
+        return json.loads(self.gh.load_url(url))
 
     def commit(self, sha):
-        url = api_base + 'commits/show/%s/%s/%s' % (self.username, self.name, sha)
-        return json.loads(self.gh.load_url(url)).get('commit', {})
+        url = api_base + 'repos/%s/%s/commits/%s' % (self.username, self.name, sha)
+        return json.loads(self.gh.load_url(url))
 
     def tags(self):
         """Get a list of tags for a repository."""

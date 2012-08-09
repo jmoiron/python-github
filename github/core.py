@@ -86,7 +86,9 @@ def to_datetime(timestring):
     """Convert one of the bitbucket API's timestamps to a datetime object."""
     import pytz
     mountain = re.search('-07:?00', timestring)
+    is_utc = timestring.endswith("Z")
     stripped = re.sub('-0\d:?00', '', timestring).strip()
+    stripped = timestring.rstrip("Z")
     try:
         dt = datetime.datetime(*time.strptime(stripped, github_date_format)[:6])
     except ValueError:
@@ -96,6 +98,9 @@ def to_datetime(timestring):
             raise Exception("Unrecognized timestamp format for string \"%s\"" % timestring)
     if mountain:
         timezone = pytz.timezone('US/Mountain')
+    elif is_utc:
+        timezone = pytz.utc
+    # github's old default timezone is US/Pacific, but nowadays most are UTC
     else:
         timezone = pytz.timezone('US/Pacific')
     local = timezone.normalize(timezone.localize(dt))
